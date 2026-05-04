@@ -1,0 +1,1 @@
+{"version":2,"defects":[],"times":{"Tests\\Unit\\TomorrowWeatherServiceTest::test_uses_cache_between_identical_lookups":0.054,"Tests\\Unit\\RouteWeatherServiceTest::test_builds_timeline_with_risk_block":0.029,"Tests\\Unit\\TomorrowWeatherServiceTest::test_same_utc_hour_different_minutes_reuses_one_http_request":0.001}}
