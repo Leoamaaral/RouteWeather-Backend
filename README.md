@@ -1,19 +1,20 @@
 # RouteWeather API
 
-API REST em **Laravel 11** que calcula uma rota (Google Directions), amostra pontos ao longo do percurso, busca previsão do tempo (Tomorrow.io) em cada trecho estimado e devolve uma linha do tempo com análise de risco da viagem.
-**Para usar com frontend -> (repo:https://github.com/Leoamaaral/web)**
+REST API built with **Laravel 11**. It computes a route (Google Directions), samples points along the path, fetches weather forecasts (Tomorrow.io) at each estimated segment, and returns a timeline with a trip risk analysis.
 
-## Requisitos
+**Frontend companion:** [github.com/Leoamaaral/web](https://github.com/Leoamaaral/web)
 
-- PHP **8.2+** com extensões usuais do Laravel (`openssl`, `pdo`, `mbstring`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, etc.)
+## Requirements
+
+- PHP **8.2+** with typical Laravel extensions (`openssl`, `pdo`, `mbstring`, `tokenizer`, `xml`, `ctype`, `json`, `bcmath`, etc.)
 - [Composer](https://getcomposer.org/)
-- Chaves de API:
-  - **Google Maps** (Directions e Geocoding reverso para cidade nos pontos)
-  - **Tomorrow.io** (previsão)
+- API keys:
+  - **Google Maps** (Directions and reverse geocoding for city labels on sample points)
+  - **Tomorrow.io** (forecast)
 
-## Instalação
+## Setup
 
-Na pasta `api/`:
+From the `api/` directory:
 
 ```bash
 composer install
@@ -21,56 +22,56 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Configure as variáveis obrigatórias no `.env` (veja a tabela abaixo). Em seguida:
+Set the required variables in `.env` (see the table below), then:
 
 ```bash
 php artisan serve
 ```
 
-A aplicação fica em `http://127.0.0.1:8000` por padrão (ajuste `APP_URL` se necessário).
+The app listens on `http://127.0.0.1:8000` by default (adjust `APP_URL` if needed).
 
-## Variáveis de ambiente
+## Environment variables
 
-| Variável | Descrição |
-|----------|-----------|
-| `APP_KEY` | Gerada com `php artisan key:generate` |
-| `APP_URL` | URL base da API (ex.: `http://localhost:8000`) |
-| `GOOGLE_MAPS_API_KEY` | Chave com APIs de Directions e Geocoding habilitadas |
-| `TOMORROW_IO_API_KEY` | Chave Tomorrow.io |
-| `TOMORROW_IO_BASE_URL` | Opcional; padrão `https://api.tomorrow.io/v4` |
-| `CORS_ALLOWED_ORIGINS` | Origens permitidas, separadas por vírgula (ex.: `http://localhost:3000`) |
-| `ROUTE_SAMPLE_INTERVAL_KM` | Intervalo entre pontos de amostragem na rota (km); padrão `25` |
-| `ROUTE_SAMPLE_MIN_POINTS` / `ROUTE_SAMPLE_MAX_POINTS` | Limites de pontos na amostragem |
-| `WEATHER_CACHE_TTL` | TTL do cache de previsão (segundos) |
-| `WEATHER_CACHE_LATLNG_ROUND` | Casas decimais para chave de cache lat/lng |
-| `CACHE_STORE` | `file` ou `redis` (com Redis configurado) |
-| `QUEUE_CONNECTION` | Padrão `sync` |
+| Variable | Description |
+|----------|-------------|
+| `APP_KEY` | Generated with `php artisan key:generate` |
+| `APP_URL` | Base URL of the API (e.g. `http://localhost:8000`) |
+| `GOOGLE_MAPS_API_KEY` | Key with Directions and Geocoding APIs enabled |
+| `TOMORROW_IO_API_KEY` | Tomorrow.io API key |
+| `TOMORROW_IO_BASE_URL` | Optional; default `https://api.tomorrow.io/v4` |
+| `CORS_ALLOWED_ORIGINS` | Allowed origins, comma-separated (e.g. `http://localhost:3000`) |
+| `ROUTE_SAMPLE_INTERVAL_KM` | Spacing between route sample points (km); default `25` |
+| `ROUTE_SAMPLE_MIN_POINTS` / `ROUTE_SAMPLE_MAX_POINTS` | Min/max number of sample points |
+| `WEATHER_CACHE_TTL` | Forecast cache TTL (seconds) |
+| `WEATHER_CACHE_LATLNG_ROUND` | Decimal places for lat/lng cache keys |
+| `CACHE_STORE` | `file` or `redis` (with Redis configured) |
+| `QUEUE_CONNECTION` | Default `sync` |
 
-Detalhes adicionais estão em `.env.example` e em `config/route_weather.php`.
+More detail is in `.env.example` and `config/route_weather.php`.
 
-## Rotas
+## Routes
 
-| Método | URI | Descrição |
-|--------|-----|-----------|
-| `GET` | `/` | JSON de status do serviço |
-| `GET` | `/up` | Health check (Laravel) |
-| `POST` | `/api/v1/route-weather/plan` | Plano de rota + clima + risco |
+| Method | URI | Description |
+|--------|-----|-------------|
+| `GET` | `/` | Service status JSON |
+| `GET` | `/up` | Laravel health check |
+| `POST` | `/api/v1/route-weather/plan` | Route plan + weather + risk |
 
 ## `POST /api/v1/route-weather/plan`
 
-Calcula a rota entre origem e destino, amostra pontos ao longo da polyline, projeta horário estimado em cada ponto, consulta o tempo e retorna metadados da rota, timeline e bloco `risk` (score, alertas, resumo).
+Computes the route between origin and destination, samples points along the encoded polyline, projects an estimated time at each point, queries weather, and returns route metadata, a `timeline`, and a `risk` block (score, alerts, summary).
 
-### Corpo (JSON)
+### Request body (JSON)
 
-| Campo | Tipo | Obrigatório | Descrição |
-|-------|------|-------------|-----------|
-| `origin` | string | sim | Endereço ou lugar de partida (até 512 caracteres) |
-| `destination` | string | sim | Endereço ou lugar de chegada |
-| `departure_at` | datetime ISO | não | Momento da partida; se omitido, usa agora |
-| `sample_interval_km` | number | não | Entre `1` e `250` km; se omitido, usa `ROUTE_SAMPLE_INTERVAL_KM` |
-| `use_traffic` | boolean | não | Se `true` (padrão), a rota considera trânsito no horário de partida |
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `origin` | string | yes | Start address or place (max 512 characters) |
+| `destination` | string | yes | End address or place |
+| `departure_at` | ISO datetime | no | Departure time; if omitted, uses “now” |
+| `sample_interval_km` | number | no | Between `1` and `250` km; if omitted, uses `ROUTE_SAMPLE_INTERVAL_KM` |
+| `use_traffic` | boolean | no | If `true` (default), routing uses traffic for the departure time |
 
-### Exemplo com `curl`
+### Example with `curl`
 
 ```bash
 curl -sS -X POST "http://127.0.0.1:8000/api/v1/route-weather/plan" \
@@ -85,33 +86,33 @@ curl -sS -X POST "http://127.0.0.1:8000/api/v1/route-weather/plan" \
   }'
 ```
 
-### Forma geral da resposta
+### Response shape
 
 - `meta`: `generated_at`, `departure_at`, `sample_interval_km`
 - `route`: `summary`, `polyline` (encoded), `total_distance_m`, `total_duration_s`
-- `timeline`: lista ordenada com `order`, `estimated_at`, `eta_offset_seconds`, `distance_from_start_km`, `location` (`lat`, `lng`, `city`), `weather` (temperatura, probabilidade de chuva, condição, códigos Tomorrow, intensidade de precipitação)
-- `risk`: `score` (inteiro), `alerts`, `summary` (texto)
+- `timeline`: ordered list with `order`, `estimated_at`, `eta_offset_seconds`, `distance_from_start_km`, `location` (`lat`, `lng`, `city`), `weather` (temperature, rain probability, condition, Tomorrow codes, precipitation intensity)
+- `risk`: `score` (integer), `alerts`, `summary` (text)
 
-Erros de validação retornam **422** com detalhes no formato padrão do Laravel.
+Validation errors return **422** with Laravel’s default error payload.
 
 ## CORS
 
-Origens são lidas de `CORS_ALLOWED_ORIGINS` (lista separada por vírgula). Ajuste para o domínio do frontend (por exemplo Next.js em `http://localhost:3000`).
+Origins are read from `CORS_ALLOWED_ORIGINS` (comma-separated list). Point it at your frontend origin (e.g. Next.js on `http://localhost:3000`).
 
-## Testes
+## Tests
 
 ```bash
 composer test
-# ou
+# or
 ./vendor/bin/phpunit
 ```
 
-## Estrutura relevante
+## Project layout
 
-- `routes/api.php` — rotas versionadas `v1`
-- `app/Http/Controllers/Api/RouteWeatherController.php` — validação HTTP e resposta JSON
-- `app/Services/` — integrações Google, Tomorrow.io, geometria da rota e análise de risco
+- `routes/api.php` — versioned `v1` routes
+- `app/Http/Controllers/Api/RouteWeatherController.php` — HTTP validation and JSON response
+- `app/Services/` — Google and Tomorrow.io integrations, route geometry, risk analysis
 
-## Licença
+## License
 
-Projeto RouteWeather é OpenSource!
+RouteWeather is open source;
