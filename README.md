@@ -2,8 +2,8 @@
 
 REST API built with **Laravel 11**. It computes a route (Google Directions), samples points along the path, fetches weather forecasts (Tomorrow.io) at each estimated segment, and returns a timeline with a trip risk analysis.
 
-**Repository:** [github.com/Leoamaaral/api](https://github.com/Leoamaaral/api)  
-**Frontend companion:** [github.com/Leoamaaral/web](https://github.com/Leoamaaral/web)
+**Repository:** [github.com/Leoamaaral/RouteWeather-Backend](https://github.com/Leoamaaral/RouteWeather-Backend)  
+**Frontend companion:** [github.com/Leoamaaral/RouteWeather-Front](https://github.com/Leoamaaral/RouteWeather-Front)
 
 ## Requirements
 
