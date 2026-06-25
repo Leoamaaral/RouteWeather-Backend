@@ -175,6 +175,18 @@ curl -sS https://route-weather-backend.vercel.app/api/v1/health
 
 Deve retornar JSON com status do serviço.
 
+### Troubleshooting: 500 no OPTIONS / "Failed to fetch"
+
+Se **todas** as rotas retornam `500` com corpo vazio, o Laravel não está subindo (não é só CORS). Confira na Vercel:
+
+1. **`APP_KEY`** está definida? Gere localmente: `php artisan key:generate --show`
+2. **`CORS_ALLOWED_ORIGINS`** inclui a URL exata do front (com `https://`, sem barra final)?  
+   Ex.: `https://route-weather-front.vercel.app`
+3. Variáveis de cache em `/tmp` e `LOG_CHANNEL=stderr` (já no `vercel.json`, mas podem ser sobrescritas no dashboard)
+4. Veja **Runtime Logs** no deploy — erros aparecem lá com `LOG_CHANNEL=stderr`
+
+Depois do deploy com `api/index.php` atualizado (storage em `/tmp`), o preflight OPTIONS deve retornar **204** e o POST funcionar.
+
 ### Alternativa: Railway / Render / Fly.io
 
 Se preferir um host com PHP nativo (sem limitações serverless), Laravel roda com `php-fpm` + Nginx ou `php artisan serve` atrás de um process manager. A Vercel é viável para esta API REST, mas hosts PHP tradicionais simplificam cache em disco e filas.
