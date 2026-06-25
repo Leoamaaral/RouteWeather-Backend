@@ -112,7 +112,9 @@ Origins are read from `CORS_ALLOWED_ORIGINS` (comma-separated list). Point it at
 
 ## Deploy na Vercel (produção)
 
-A Vercel **não** roda `php artisan serve` nem inclui PHP no build padrão. Este projeto usa o runtime community [`vercel-php`](https://github.com/vercel-community/php) via `vercel.json` e `api/index.php`.
+A Vercel **não** roda `php artisan serve` nem inclui PHP no build padrão. Este projeto usa o runtime community [`vercel-php`](https://github.com/vercel-community/php) via `vercel.json` e `server/index.php`.
+
+> **Importante:** o entrypoint fica em `server/`, não em `api/`. A Vercel reserva o caminho `/api` para serverless functions, o que conflita com as rotas Laravel em `/api/v1/...`.
 
 ### 1. Ajustar o projeto na Vercel (dashboard)
 
@@ -126,7 +128,7 @@ No projeto **route-weather-backend**:
 | **Install Command** | *(vazio ou `composer install --no-dev --optimize-autoloader`)* |
 | **Root Directory** | `.` (raiz do repositório Backend) |
 
-Faça push dos arquivos `vercel.json`, `api/index.php` e `package.json` antes de redeployar.
+Faça push dos arquivos `vercel.json`, `server/index.php` e `package.json` antes de redeployar.
 
 ### 2. Variáveis de ambiente na Vercel (API)
 
@@ -175,6 +177,10 @@ curl -sS https://route-weather-backend.vercel.app/api/v1/health
 
 Deve retornar JSON com status do serviço.
 
+### Troubleshooting: 404 em `/api/v1/...`
+
+A Vercel trata a pasta `api/` na raiz do projeto como **serverless functions**. Se o entrypoint estiver em `api/index.php`, rotas Laravel como `/api/v1/health` retornam 404. O entrypoint correto é `server/index.php` (ver `vercel.json`).
+
 ### Troubleshooting: 500 no OPTIONS / "Failed to fetch"
 
 Se **todas** as rotas retornam `500` com corpo vazio, o Laravel não está subindo (não é só CORS). Confira na Vercel:
@@ -185,7 +191,7 @@ Se **todas** as rotas retornam `500` com corpo vazio, o Laravel não está subin
 3. Variáveis de cache em `/tmp` e `LOG_CHANNEL=stderr` (já no `vercel.json`, mas podem ser sobrescritas no dashboard)
 4. Veja **Runtime Logs** no deploy — erros aparecem lá com `LOG_CHANNEL=stderr`
 
-Depois do deploy com `api/index.php` atualizado (storage em `/tmp`), o preflight OPTIONS deve retornar **204** e o POST funcionar.
+Depois do deploy com `server/index.php`, o preflight OPTIONS deve retornar **204** e o POST funcionar.
 
 ### Alternativa: Railway / Render / Fly.io
 

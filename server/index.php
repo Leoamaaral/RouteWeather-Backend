@@ -2,7 +2,8 @@
 
 /**
  * Vercel serverless entrypoint.
- * Prepares writable /tmp paths before booting Laravel.
+ * Must live outside /api — Vercel reserves that path for serverless functions,
+ * which conflicts with Laravel routes prefixed with /api.
  */
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;
