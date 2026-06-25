@@ -110,6 +110,75 @@ Validation errors return **422** with Laravel’s default error payload.
 
 Origins are read from `CORS_ALLOWED_ORIGINS` (comma-separated list). Point it at your frontend origin (e.g. Next.js on `http://localhost:3000`).
 
+## Deploy na Vercel (produção)
+
+A Vercel **não** roda `php artisan serve` nem inclui PHP no build padrão. Este projeto usa o runtime community [`vercel-php`](https://github.com/vercel-community/php) via `vercel.json` e `api/index.php`.
+
+### 1. Ajustar o projeto na Vercel (dashboard)
+
+No projeto **route-weather-backend**:
+
+| Configuração | Valor |
+|--------------|-------|
+| **Framework Preset** | Other |
+| **Build Command** | *(vazio — apague `php artisan serve`)* |
+| **Output Directory** | *(vazio — o `vercel.json` controla)* |
+| **Install Command** | *(vazio ou `composer install --no-dev --optimize-autoloader`)* |
+| **Root Directory** | `.` (raiz do repositório Backend) |
+
+Faça push dos arquivos `vercel.json`, `api/index.php` e `package.json` antes de redeployar.
+
+### 2. Variáveis de ambiente na Vercel (API)
+
+Defina em **Settings → Environment Variables** (Production):
+
+| Variável | Exemplo / valor |
+|----------|-----------------|
+| `APP_KEY` | saída de `php artisan key:generate --show` (local) |
+| `APP_ENV` | `production` |
+| `APP_DEBUG` | `false` |
+| `APP_URL` | `https://route-weather-backend.vercel.app` |
+| `LOG_CHANNEL` | `stderr` |
+| `CACHE_STORE` | `array` *(simples; sem cache entre requisições)* ou `redis` com Upstash |
+| `SESSION_DRIVER` | `cookie` |
+| `APP_CONFIG_CACHE` | `/tmp/config.php` |
+| `APP_ROUTES_CACHE` | `/tmp/routes.php` |
+| `APP_EVENTS_CACHE` | `/tmp/events.php` |
+| `APP_PACKAGES_CACHE` | `/tmp/packages.php` |
+| `APP_SERVICES_CACHE` | `/tmp/services.php` |
+| `VIEW_COMPILED_PATH` | `/tmp` |
+| `GOOGLE_MAPS_API_KEY` | sua chave server-side |
+| `TOMORROW_IO_API_KEY` | sua chave Tomorrow.io |
+| `CORS_ALLOWED_ORIGINS` | URL do front em prod, ex. `https://seu-app.vercel.app` |
+
+> **Cache em serverless:** `CACHE_STORE=file` não funciona na Vercel (filesystem somente leitura). Para cache persistente entre requisições, use **Upstash Redis** no Marketplace da Vercel e configure `CACHE_STORE=redis` + variáveis `REDIS_*`.
+
+### 3. Conectar o frontend (web) em produção
+
+No projeto **Next.js** na Vercel, defina:
+
+```
+NEXT_PUBLIC_API_URL=https://route-weather-backend.vercel.app
+```
+
+*(sem barra no final)*
+
+O browser chamará `https://route-weather-backend.vercel.app/api/v1/route-weather/plan`.
+
+Confirme que a URL do front está em `CORS_ALLOWED_ORIGINS` da API. Múltiplas origens: separadas por vírgula.
+
+### 4. Validar o deploy
+
+```bash
+curl -sS https://route-weather-backend.vercel.app/api/v1/health
+```
+
+Deve retornar JSON com status do serviço.
+
+### Alternativa: Railway / Render / Fly.io
+
+Se preferir um host com PHP nativo (sem limitações serverless), Laravel roda com `php-fpm` + Nginx ou `php artisan serve` atrás de um process manager. A Vercel é viável para esta API REST, mas hosts PHP tradicionais simplificam cache em disco e filas.
+
 ## Tests
 
 ```bash
