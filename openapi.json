@@ -1,0 +1,329 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "RouteWeather API",
+    "version": "1.0.0",
+    "description": "Computes a route (Google Directions), samples points along the path, fetches weather forecasts (Tomorrow.io) at each estimated segment, and returns a timeline with a trip risk analysis."
+  },
+  "servers": [
+    { "url": "http://localhost:8000", "description": "Local" }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "summary": "Service health and dependency status",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": { "type": "string" },
+                    "status": { "type": "string" },
+                    "dependencies": {
+                      "type": "object",
+                      "properties": {
+                        "google_maps": { "type": "boolean" },
+                        "tomorrow_io": { "type": "boolean" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/docs": {
+      "get": {
+        "summary": "This OpenAPI specification as JSON",
+        "responses": { "200": { "description": "OpenAPI document" } }
+      }
+    },
+    "/api/v1/route-weather/plan": {
+      "post": {
+        "summary": "Route plan + weather timeline + risk",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PlanRequest" }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plan",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/PlanResponse" }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Error" },
+          "422": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" },
+          "504": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/route-weather/plan/compare": {
+      "post": {
+        "summary": "Compare multiple departure windows and recommend the lowest-risk one",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["origin", "destination", "departure_windows"],
+                "properties": {
+                  "origin": { "type": "string", "maxLength": 512 },
+                  "destination": { "type": "string", "maxLength": 512 },
+                  "departure_windows": {
+                    "type": "array",
+                    "items": { "type": "string", "format": "date-time" },
+                    "minItems": 1
+                  },
+                  "sample_interval_km": { "type": "number", "minimum": 1, "maximum": 250 },
+                  "use_traffic": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Comparison",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "origin": { "type": "string" },
+                    "destination": { "type": "string" },
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "departure_at": { "type": "string", "format": "date-time" },
+                          "arrival_at": { "type": "string", "format": "date-time" },
+                          "route": {
+                            "type": "object",
+                            "properties": {
+                              "total_distance_m": { "type": "number" },
+                              "total_duration_s": { "type": "integer" }
+                            }
+                          },
+                          "risk": {
+                            "type": "object",
+                            "properties": {
+                              "score": { "type": "integer" },
+                              "summary": { "type": "string" },
+                              "alerts_count": { "type": "integer" }
+                            }
+                          }
+                        }
+                      }
+                    },
+                    "best": {
+                      "type": "object",
+                      "nullable": true,
+                      "properties": {
+                        "departure_at": { "type": "string", "format": "date-time" },
+                        "score": { "type": "integer" }
+                      }
+                    },
+                    "recommendation": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/route-weather/plan/async": {
+      "post": {
+        "summary": "Enqueue a plan and receive a job id for polling",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/PlanRequest" }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job_id": { "type": "string", "format": "uuid" },
+                    "status": { "type": "string" },
+                    "status_url": { "type": "string", "format": "uri" }
+                  }
+                }
+              }
+            }
+          },
+          "422": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/api/v1/route-weather/plan/status/{jobId}": {
+      "get": {
+        "summary": "Poll the result of an enqueued plan",
+        "parameters": [
+          {
+            "name": "jobId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "job_id": { "type": "string" },
+                    "status": { "type": "string", "enum": ["pending", "completed", "failed"] },
+                    "result": { "$ref": "#/components/schemas/PlanResponse" }
+                  }
+                }
+              }
+            }
+          },
+          "404": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "responses": {
+      "Error": {
+        "description": "Structured error",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "object",
+                  "properties": {
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "additionalProperties": true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "PlanRequest": {
+        "type": "object",
+        "required": ["origin", "destination"],
+        "properties": {
+          "origin": { "type": "string", "maxLength": 512 },
+          "destination": { "type": "string", "maxLength": 512 },
+          "departure_at": { "type": "string", "format": "date-time" },
+          "sample_interval_km": { "type": "number", "minimum": 1, "maximum": 250 },
+          "use_traffic": { "type": "boolean", "default": true }
+        }
+      },
+      "Weather": {
+        "type": "object",
+        "properties": {
+          "temperature_c": { "type": "number", "nullable": true },
+          "rain_probability": { "type": "number", "nullable": true },
+          "condition": { "type": "string", "nullable": true },
+          "weather_code": { "type": "integer", "nullable": true },
+          "precipitation_intensity_mm_h": { "type": "number", "nullable": true },
+          "wind_speed_kmh": { "type": "number", "nullable": true },
+          "visibility_km": { "type": "number", "nullable": true },
+          "cloud_cover": { "type": "number", "nullable": true }
+        }
+      },
+      "TimelineItem": {
+        "type": "object",
+        "properties": {
+          "order": { "type": "integer" },
+          "estimated_at": { "type": "string", "format": "date-time" },
+          "eta_offset_seconds": { "type": "integer" },
+          "distance_from_start_km": { "type": "number" },
+          "location": {
+            "type": "object",
+            "properties": {
+              "lat": { "type": "number" },
+              "lng": { "type": "number" },
+              "city": { "type": "string", "nullable": true }
+            }
+          },
+          "weather": { "$ref": "#/components/schemas/Weather" }
+        }
+      },
+      "PlanResponse": {
+        "type": "object",
+        "properties": {
+          "meta": {
+            "type": "object",
+            "properties": {
+              "generated_at": { "type": "string", "format": "date-time" },
+              "departure_at": { "type": "string", "format": "date-time" },
+              "sample_interval_km": { "type": "number" },
+              "warnings": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "route": {
+            "type": "object",
+            "properties": {
+              "summary": { "type": "string" },
+              "polyline": { "type": "string" },
+              "total_distance_m": { "type": "number" },
+              "total_duration_s": { "type": "integer" }
+            }
+          },
+          "timeline": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/TimelineItem" }
+          },
+          "risk": {
+            "type": "object",
+            "properties": {
+              "score": { "type": "integer" },
+              "alerts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string" },
+                    "label": { "type": "string" },
+                    "severity": { "type": "string" },
+                    "segment": { "type": "string" },
+                    "order": { "type": "integer" }
+                  }
+                }
+              },
+              "summary": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

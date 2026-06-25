@@ -40,13 +40,16 @@ The app listens on `http://127.0.0.1:8000` by default (adjust `APP_URL` if neede
 | `GOOGLE_MAPS_API_KEY` | Key with Directions and Geocoding APIs enabled |
 | `TOMORROW_IO_API_KEY` | Tomorrow.io API key |
 | `TOMORROW_IO_BASE_URL` | Optional; default `https://api.tomorrow.io/v4` |
+| `GEOCODE_LANGUAGE` | Language for reverse geocoding city labels; default `pt-BR` |
 | `CORS_ALLOWED_ORIGINS` | Allowed origins, comma-separated (e.g. `http://localhost:3000`) |
 | `ROUTE_SAMPLE_INTERVAL_KM` | Spacing between route sample points (km); default `25` |
 | `ROUTE_SAMPLE_MIN_POINTS` / `ROUTE_SAMPLE_MAX_POINTS` | Min/max number of sample points |
 | `WEATHER_CACHE_TTL` | Forecast cache TTL (seconds) |
 | `WEATHER_CACHE_LATLNG_ROUND` | Decimal places for lat/lng cache keys |
+| `PLAN_CACHE_TTL` | Full-plan cache TTL (seconds); `0` disables it |
+| `ROUTE_COMPARE_MAX_WINDOWS` | Max departure windows accepted by `/plan/compare` |
 | `CACHE_STORE` | `file` or `redis` (with Redis configured) |
-| `QUEUE_CONNECTION` | Default `sync` |
+| `QUEUE_CONNECTION` | `sync` (default) or `redis` for async plans |
 
 More detail is in `.env.example` and `config/route_weather.php`.
 
@@ -56,7 +59,14 @@ More detail is in `.env.example` and `config/route_weather.php`.
 |--------|-----|-------------|
 | `GET` | `/` | Service status JSON |
 | `GET` | `/up` | Laravel health check |
+| `GET` | `/api/v1/health` | Service status with dependency configuration flags |
+| `GET` | `/api/v1/docs` | OpenAPI 3 specification (JSON) |
 | `POST` | `/api/v1/route-weather/plan` | Route plan + weather + risk |
+| `POST` | `/api/v1/route-weather/plan/compare` | Compare departure windows and recommend the lowest-risk one |
+| `POST` | `/api/v1/route-weather/plan/async` | Enqueue a plan; returns a `job_id` (202) |
+| `GET` | `/api/v1/route-weather/plan/status/{jobId}` | Poll an enqueued plan result |
+
+The `plan` and `status` endpoints are rate limited to 30 requests/minute; `compare` and `async` to 10 requests/minute. Errors return a structured body: `{ "error": { "code", "message", "details?" } }`.
 
 ## `POST /api/v1/route-weather/plan`
 
@@ -89,10 +99,10 @@ curl -sS -X POST "http://127.0.0.1:8000/api/v1/route-weather/plan" \
 
 ### Response shape
 
-- `meta`: `generated_at`, `departure_at`, `sample_interval_km`
+- `meta`: `generated_at`, `departure_at`, `sample_interval_km`, `warnings` (e.g. points without forecast)
 - `route`: `summary`, `polyline` (encoded), `total_distance_m`, `total_duration_s`
-- `timeline`: ordered list with `order`, `estimated_at`, `eta_offset_seconds`, `distance_from_start_km`, `location` (`lat`, `lng`, `city`), `weather` (temperature, rain probability, condition, Tomorrow codes, precipitation intensity)
-- `risk`: `score` (integer), `alerts`, `summary` (text)
+- `timeline`: ordered list with `order`, `estimated_at`, `eta_offset_seconds`, `distance_from_start_km`, `location` (`lat`, `lng`, `city`), `weather` (temperature, rain probability, condition, Tomorrow codes, precipitation intensity, `wind_speed_kmh`, `visibility_km`, `cloud_cover`). ETA per point is derived from the Google route's per-step duration profile, not a linear distance ratio.
+- `risk`: `score` (integer), `alerts` (rain, storm, fog, strong wind, ice risk), `summary` (text)
 
 Validation errors return **422** with Laravel’s default error payload.
 

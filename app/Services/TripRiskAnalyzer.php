@@ -10,8 +10,10 @@ namespace App\Services;
  * - Tempestades (códigos Tomorrow 8000–8003) adicionam peso alto e geram alerta dedicado.
  * - Chuva forte usa códigos explícitos (4201–4203, 4001) ou prob ≥ 0,65 ou intensidade ≥ 7,5 mm/h.
  * - Chuva leve: prob ≥ 0,35 sem classificação forte/tempestade.
+ * - Neblina (visibilidade < 2 km), vento forte (> 60 km/h) e risco de gelo (≤ 3 °C com chuva)
+ *   também elevam o score e geram alertas dedicados.
  * - Usamos também o percentil 90 das probabilidades para não “esconder” um trecho ruim atrás da média.
- * - O resumo textual prioriza tempestade, depois chuva forte no terço central do percurso, depois chuva leve.
+ * - O resumo textual prioriza tempestade, neblina, gelo, vento forte e chuva, nessa ordem.
  */
 final class TripRiskAnalyzer
 {
@@ -24,6 +26,12 @@ final class TripRiskAnalyzer
     /** @var list<int> */
     private const LIGHT_RAIN_CODES = [4000, 4200];
 
+    private const FOG_VISIBILITY_KM = 2.0;
+
+    private const STRONG_WIND_KMH = 60.0;
+
+    private const ICE_TEMPERATURE_C = 3.0;
+
     /**
      * @param  list<array{
      *   order: int,
@@ -34,7 +42,10 @@ final class TripRiskAnalyzer
      *     rain_probability: ?float,
      *     condition: ?string,
      *     weather_code: ?int,
-     *     precipitation_intensity_mm_h: ?float
+     *     precipitation_intensity_mm_h: ?float,
+     *     wind_speed_kmh?: ?float,
+     *     visibility_km?: ?float,
+     *     cloud_cover?: ?float
      *   }
      * }>  $timeline
      * @return array{score: int, alerts: list<array<string, mixed>>, summary: string}
@@ -68,6 +79,9 @@ final class TripRiskAnalyzer
             $intensity = isset($weather['precipitation_intensity_mm_h'])
                 ? (float) $weather['precipitation_intensity_mm_h']
                 : null;
+            $temp = isset($weather['temperature_c']) ? (float) $weather['temperature_c'] : null;
+            $wind = isset($weather['wind_speed_kmh']) ? (float) $weather['wind_speed_kmh'] : null;
+            $visibility = isset($weather['visibility_km']) ? (float) $weather['visibility_km'] : null;
 
             $score += $this->scoreFromProbability($prob);
             $score += $this->scoreFromWeatherCode($code);
@@ -80,6 +94,11 @@ final class TripRiskAnalyzer
             $segment = $this->segmentLabel($order, $middleStart, $middleEnd, $count);
 
             foreach ($this->buildAlertsForPoint($prob, $code, $intensity, $segment, $order) as $alert) {
+                $alerts[] = $alert;
+            }
+
+            $score += $this->scoreFromConditions($visibility, $wind, $temp, $prob, $intensity, $code);
+            foreach ($this->buildConditionAlerts($visibility, $wind, $temp, $prob, $intensity, $code, $segment, $order) as $alert) {
                 $alerts[] = $alert;
             }
         }
@@ -128,6 +147,100 @@ final class TripRiskAnalyzer
         }
 
         return 0.0;
+    }
+
+    private function scoreFromConditions(
+        ?float $visibility,
+        ?float $wind,
+        ?float $temp,
+        ?float $prob,
+        ?float $intensity,
+        ?int $code,
+    ): float {
+        $score = 0.0;
+
+        if ($this->isFog($visibility)) {
+            $score += 18.0;
+        }
+        if ($this->isStrongWind($wind)) {
+            $score += 15.0;
+        }
+        if ($this->isIceRisk($temp, $prob, $intensity, $code)) {
+            $score += 20.0;
+        }
+
+        return $score;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function buildConditionAlerts(
+        ?float $visibility,
+        ?float $wind,
+        ?float $temp,
+        ?float $prob,
+        ?float $intensity,
+        ?int $code,
+        string $segment,
+        int $order,
+    ): array {
+        $alerts = [];
+
+        if ($this->isFog($visibility)) {
+            $alerts[] = [
+                'type' => 'fog',
+                'label' => 'Neblina',
+                'severity' => 'high',
+                'segment' => $segment,
+                'order' => $order,
+            ];
+        }
+
+        if ($this->isStrongWind($wind)) {
+            $alerts[] = [
+                'type' => 'strong_wind',
+                'label' => 'Vento forte',
+                'severity' => 'high',
+                'segment' => $segment,
+                'order' => $order,
+            ];
+        }
+
+        if ($this->isIceRisk($temp, $prob, $intensity, $code)) {
+            $alerts[] = [
+                'type' => 'ice_risk',
+                'label' => 'Risco de gelo',
+                'severity' => 'high',
+                'segment' => $segment,
+                'order' => $order,
+            ];
+        }
+
+        return $alerts;
+    }
+
+    private function isFog(?float $visibility): bool
+    {
+        return $visibility !== null && $visibility < self::FOG_VISIBILITY_KM;
+    }
+
+    private function isStrongWind(?float $wind): bool
+    {
+        return $wind !== null && $wind > self::STRONG_WIND_KMH;
+    }
+
+    private function isIceRisk(?float $temp, ?float $prob, ?float $intensity, ?int $code): bool
+    {
+        if ($temp === null || $temp > self::ICE_TEMPERATURE_C) {
+            return false;
+        }
+
+        $hasPrecip = ($prob !== null && $prob >= 0.3)
+            || ($intensity !== null && $intensity > 0.0)
+            || ($code !== null && in_array($code, [...self::LIGHT_RAIN_CODES, ...self::HEAVY_RAIN_CODES, ...self::THUNDERSTORM_CODES], true));
+
+        return $hasPrecip;
     }
 
     /**
@@ -245,6 +358,18 @@ final class TripRiskAnalyzer
 
         if (in_array('storm', $types, true)) {
             return 'Risco elevado: tempestade prevista em parte do trajeto. Considere adiar ou replanejar.';
+        }
+
+        if (in_array('ice_risk', $types, true)) {
+            return 'Risco de gelo na pista: temperatura baixa com precipitação em parte do trajeto.';
+        }
+
+        if (in_array('fog', $types, true)) {
+            return 'Visibilidade reduzida por neblina em trechos do percurso. Redobre a atenção.';
+        }
+
+        if (in_array('strong_wind', $types, true)) {
+            return 'Ventos fortes previstos no trajeto; atenção a veículos altos e motos.';
         }
 
         $middleHeavy = false;

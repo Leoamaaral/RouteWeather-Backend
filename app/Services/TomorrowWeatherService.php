@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use Carbon\Carbon;
+use Illuminate\Http\Client\Pool;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +18,17 @@ use Illuminate\Support\Facades\Log;
  */
 final class TomorrowWeatherService
 {
+    /** @var list<string> */
+    private const FIELDS = [
+        'temperature',
+        'precipitationProbability',
+        'weatherCode',
+        'precipitationIntensity',
+        'windSpeed',
+        'visibility',
+        'cloudCover',
+    ];
+
     public function __construct(
         private readonly string $apiKey,
         private readonly string $baseUrl,
@@ -29,7 +42,10 @@ final class TomorrowWeatherService
      *   rain_probability: ?float,
      *   condition: ?string,
      *   weather_code: ?int,
-     *   precipitation_intensity_mm_h: ?float
+     *   precipitation_intensity_mm_h: ?float,
+     *   wind_speed_kmh: ?float,
+     *   visibility_km: ?float,
+     *   cloud_cover: ?float
      * }
      */
     public function forecastAt(Carbon $time, float $lat, float $lng): array
@@ -63,19 +79,80 @@ final class TomorrowWeatherService
     }
 
     /**
-     * Pré-carrega vários pontos reutilizando o mesmo array de cache (útil para testes).
+     * Resolve a previsão de vários pontos em paralelo, deduplicando os que caem
+     * na mesma chave de cache (mesma hora UTC + local arredondado).
      *
      * @param  list<array{time: Carbon, lat: float, lng: float}>  $points
-     * @return list<array<string, mixed>>
+     * @return list<array<string, mixed>> previsões na mesma ordem dos pontos
      */
-    public function forecastMany(array $points): array
+    public function forecastBatch(array $points): array
     {
-        $out = [];
-        foreach ($points as $p) {
-            $out[] = $this->forecastAt($p['time'], $p['lat'], $p['lng']);
+        $results = array_fill(0, count($points), $this->emptyForecast());
+        if ($points === [] || $this->apiKey === '') {
+            return $results;
         }
 
-        return $out;
+        $groups = [];
+        foreach ($points as $i => $point) {
+            $key = $this->timelineCacheKey($point['lat'], $point['lng'], $point['time']);
+            $groups[$key] ??= ['lat' => $point['lat'], 'lng' => $point['lng'], 'members' => []];
+            $groups[$key]['members'][] = ['index' => $i, 'time' => $point['time']];
+        }
+
+        $jsonByKey = [];
+        $misses = [];
+        foreach ($groups as $key => $group) {
+            $cached = Cache::get($key);
+            if (is_array($cached)) {
+                $jsonByKey[$key] = $cached;
+            } else {
+                $misses[$key] = $group;
+            }
+        }
+
+        if ($misses !== []) {
+            $keys = array_keys($misses);
+            $responses = Http::pool(fn (Pool $pool) => array_map(
+                fn (string $key) => $pool->as($key)
+                    ->withQueryParameters(['apikey' => $this->apiKey])
+                    ->timeout(25)
+                    ->acceptJson()
+                    ->retry(3, 100, throw: false)
+                    ->post(
+                        $this->baseUrl.'/timelines',
+                        $this->timelineRequestBody($misses[$key]['members'][0]['time'], $misses[$key]['lat'], $misses[$key]['lng']),
+                    ),
+                $keys,
+            ));
+
+            foreach (array_keys($misses) as $key) {
+                $response = $responses[$key] ?? null;
+                if ($response instanceof Response && $response->successful()) {
+                    $jsonByKey[$key] = $response->json() ?? [];
+                } else {
+                    Log::warning('Tomorrow.io batch request failed', ['key' => $key]);
+                }
+            }
+        }
+
+        foreach ($groups as $key => $group) {
+            $json = $jsonByKey[$key] ?? null;
+            if ($json === null) {
+                continue;
+            }
+
+            $shouldCache = isset($misses[$key]);
+            foreach ($group['members'] as $member) {
+                $parsed = $this->parseTimelineResponse($json, $member['time']);
+                $results[$member['index']] = $parsed;
+                if ($shouldCache && ! $this->forecastIsEmpty($parsed)) {
+                    Cache::put($key, $json, $this->cacheTtlSeconds);
+                    $shouldCache = false;
+                }
+            }
+        }
+
+        return $results;
     }
 
     private function timelineCacheKey(float $lat, float $lng, Carbon $time): string
@@ -85,6 +162,21 @@ final class TomorrowWeatherService
         $hour = $time->copy()->utc()->format('Y-m-d-H');
 
         return "tomorrow:tl:raw:{$rlat}:{$rlng}:{$hour}";
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function timelineRequestBody(Carbon $time, float $lat, float $lng): array
+    {
+        return [
+            'location' => $lat.','.$lng,
+            'fields' => self::FIELDS,
+            'units' => 'metric',
+            'timesteps' => ['1h'],
+            'startTime' => $time->copy()->subHours(2)->toIso8601String(),
+            'endTime' => $time->copy()->addHours(4)->toIso8601String(),
+        ];
     }
 
     /**
@@ -115,19 +207,7 @@ final class TomorrowWeatherService
                 $response = Http::withQueryParameters(['apikey' => $this->apiKey])
                     ->timeout(25)
                     ->acceptJson()
-                    ->post($this->baseUrl.'/timelines', [
-                        'location' => $lat.','.$lng,
-                        'fields' => [
-                            'temperature',
-                            'precipitationProbability',
-                            'weatherCode',
-                            'precipitationIntensity',
-                        ],
-                        'units' => 'metric',
-                        'timesteps' => ['1h'],
-                        'startTime' => $time->copy()->subHours(2)->toIso8601String(),
-                        'endTime' => $time->copy()->addHours(4)->toIso8601String(),
-                    ]);
+                    ->post($this->baseUrl.'/timelines', $this->timelineRequestBody($time, $lat, $lng));
 
                 $response->throw();
 
@@ -266,6 +346,9 @@ final class TomorrowWeatherService
         }
         $code = isset($values['weatherCode']) ? (int) $values['weatherCode'] : null;
         $intensity = isset($values['precipitationIntensity']) ? (float) $values['precipitationIntensity'] : null;
+        $windKmh = isset($values['windSpeed']) ? round(((float) $values['windSpeed']) * 3.6, 1) : null;
+        $visibility = isset($values['visibility']) ? (float) $values['visibility'] : null;
+        $cloudCover = isset($values['cloudCover']) ? (float) $values['cloudCover'] : null;
 
         return [
             'temperature_c' => $temp,
@@ -273,6 +356,9 @@ final class TomorrowWeatherService
             'condition' => $this->describeCode($code),
             'weather_code' => $code,
             'precipitation_intensity_mm_h' => $intensity,
+            'wind_speed_kmh' => $windKmh,
+            'visibility_km' => $visibility,
+            'cloud_cover' => $cloudCover,
         ];
     }
 
@@ -302,6 +388,9 @@ final class TomorrowWeatherService
             'condition' => null,
             'weather_code' => null,
             'precipitation_intensity_mm_h' => null,
+            'wind_speed_kmh' => null,
+            'visibility_km' => null,
+            'cloud_cover' => null,
         ];
     }
 }

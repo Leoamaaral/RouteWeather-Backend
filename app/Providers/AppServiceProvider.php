@@ -3,8 +3,11 @@
 namespace App\Providers;
 
 use App\Services\GoogleDirectionsService;
+use App\Services\PolylineDecoder;
+use App\Services\RouteGeometryService;
 use App\Services\RouteWeatherService;
 use App\Services\TomorrowWeatherService;
+use App\Services\TripRiskAnalyzer;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -14,6 +17,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(GoogleDirectionsService::class, function () {
             return new GoogleDirectionsService(
                 (string) config('route_weather.google_maps_api_key'),
+                (string) config('route_weather.geocode_language', 'pt-BR'),
             );
         });
 
@@ -29,13 +33,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(RouteWeatherService::class, function ($app) {
             return new RouteWeatherService(
                 $app->make(GoogleDirectionsService::class),
-                $app->make(\App\Services\PolylineDecoder::class),
-                $app->make(\App\Services\RouteGeometryService::class),
+                $app->make(PolylineDecoder::class),
+                $app->make(RouteGeometryService::class),
                 $app->make(TomorrowWeatherService::class),
-                $app->make(\App\Services\TripRiskAnalyzer::class),
+                $app->make(TripRiskAnalyzer::class),
                 (float) config('route_weather.sample_interval_km'),
                 (int) config('route_weather.sample_min_points'),
                 (int) config('route_weather.sample_max_points'),
+                (int) config('route_weather.plan_cache_ttl_seconds'),
             );
         });
     }
