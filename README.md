@@ -59,16 +59,16 @@ More detail is in `.env.example` and `config/route_weather.php`.
 |--------|-----|-------------|
 | `GET` | `/` | Service status JSON |
 | `GET` | `/up` | Laravel health check |
-| `GET` | `/api/v1/health` | Service status with dependency configuration flags |
-| `GET` | `/api/v1/docs` | OpenAPI 3 specification (JSON) |
-| `POST` | `/api/v1/route-weather/plan` | Route plan + weather + risk |
-| `POST` | `/api/v1/route-weather/plan/compare` | Compare departure windows and recommend the lowest-risk one |
-| `POST` | `/api/v1/route-weather/plan/async` | Enqueue a plan; returns a `job_id` (202) |
-| `GET` | `/api/v1/route-weather/plan/status/{jobId}` | Poll an enqueued plan result |
+| `GET` | `/v1/health` | Service status with dependency configuration flags |
+| `GET` | `/v1/docs` | OpenAPI 3 specification (JSON) |
+| `POST` | `/v1/route-weather/plan` | Route plan + weather + risk |
+| `POST` | `/v1/route-weather/plan/compare` | Compare departure windows and recommend the lowest-risk one |
+| `POST` | `/v1/route-weather/plan/async` | Enqueue a plan; returns a `job_id` (202) |
+| `GET` | `/v1/route-weather/plan/status/{jobId}` | Poll an enqueued plan result |
 
 The `plan` and `status` endpoints are rate limited to 30 requests/minute; `compare` and `async` to 10 requests/minute. Errors return a structured body: `{ "error": { "code", "message", "details?" } }`.
 
-## `POST /api/v1/route-weather/plan`
+## `POST /v1/route-weather/plan`
 
 Computes the route between origin and destination, samples points along the encoded polyline, projects an estimated time at each point, queries weather, and returns route metadata, a `timeline`, and a `risk` block (score, alerts, summary).
 
@@ -85,7 +85,7 @@ Computes the route between origin and destination, samples points along the enco
 ### Example with `curl`
 
 ```bash
-curl -sS -X POST "http://127.0.0.1:8000/api/v1/route-weather/plan" \
+curl -sS -X POST "http://127.0.0.1:8000/v1/route-weather/plan" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
   -d '{
@@ -112,9 +112,9 @@ Origins are read from `CORS_ALLOWED_ORIGINS` (comma-separated list). Point it at
 
 ## Deploy na Vercel (produção)
 
-A Vercel **não** roda `php artisan serve` nem inclui PHP no build padrão. Este projeto usa o runtime community [`vercel-php`](https://github.com/vercel-community/php) via `vercel.json` e `server/index.php`.
+A Vercel **não** roda `php artisan serve` nem inclui PHP no build padrão. Este projeto usa o runtime community [`vercel-php`](https://github.com/vercel-community/php) via `vercel.json` e `api/index.php`.
 
-> **Importante:** o entrypoint fica em `server/`, não em `api/`. A Vercel reserva o caminho `/api` para serverless functions, o que conflita com as rotas Laravel em `/api/v1/...`.
+> **Importante:** a Vercel reserva o caminho URL `/api` para serverless functions. As rotas da aplicação ficam em **`/v1/*`** (não `/api/v1/*`). O entrypoint PHP fica em `api/index.php` (pasta exigida pela plataforma).
 
 ### 1. Ajustar o projeto na Vercel (dashboard)
 
@@ -128,7 +128,7 @@ No projeto **route-weather-backend**:
 | **Install Command** | *(vazio ou `composer install --no-dev --optimize-autoloader`)* |
 | **Root Directory** | `.` (raiz do repositório Backend) |
 
-Faça push dos arquivos `vercel.json`, `server/index.php` e `package.json` antes de redeployar.
+Faça push dos arquivos `vercel.json`, `api/index.php` e `package.json` antes de redeployar.
 
 ### 2. Variáveis de ambiente na Vercel (API)
 
@@ -165,21 +165,21 @@ NEXT_PUBLIC_API_URL=https://route-weather-backend.vercel.app
 
 *(sem barra no final)*
 
-O browser chamará `https://route-weather-backend.vercel.app/api/v1/route-weather/plan`.
+O browser chamará `https://route-weather-backend.vercel.app/v1/route-weather/plan`.
 
 Confirme que a URL do front está em `CORS_ALLOWED_ORIGINS` da API. Múltiplas origens: separadas por vírgula.
 
 ### 4. Validar o deploy
 
 ```bash
-curl -sS https://route-weather-backend.vercel.app/api/v1/health
+curl -sS https://route-weather-backend.vercel.app/v1/health
 ```
 
 Deve retornar JSON com status do serviço.
 
-### Troubleshooting: 404 em `/api/v1/...`
+### Troubleshooting: 404 nas rotas
 
-A Vercel trata a pasta `api/` na raiz do projeto como **serverless functions**. Se o entrypoint estiver em `api/index.php`, rotas Laravel como `/api/v1/health` retornam 404. O entrypoint correto é `server/index.php` (ver `vercel.json`).
+As rotas da API são **`/v1/...`**, não `/api/v1/...`. O front deve chamar `{NEXT_PUBLIC_API_URL}/v1/route-weather/plan`. Se ainda retornar 404, confira se o deploy usou `builds` + `api/index.php` no `vercel.json`.
 
 ### Troubleshooting: 500 no OPTIONS / "Failed to fetch"
 
@@ -191,7 +191,7 @@ Se **todas** as rotas retornam `500` com corpo vazio, o Laravel não está subin
 3. Variáveis de cache em `/tmp` e `LOG_CHANNEL=stderr` (já no `vercel.json`, mas podem ser sobrescritas no dashboard)
 4. Veja **Runtime Logs** no deploy — erros aparecem lá com `LOG_CHANNEL=stderr`
 
-Depois do deploy com `server/index.php`, o preflight OPTIONS deve retornar **204** e o POST funcionar.
+Depois do deploy, o preflight OPTIONS deve retornar **204** e o POST funcionar.
 
 ### Alternativa: Railway / Render / Fly.io
 

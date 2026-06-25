@@ -117,7 +117,7 @@ class RouteWeatherController extends Controller
         return response()->json([
             'job_id' => $jobId,
             'status' => Cache::get($cacheKey)['status'] ?? 'pending',
-            'status_url' => url("/api/v1/route-weather/plan/status/{$jobId}"),
+            'status_url' => url("/v1/route-weather/plan/status/{$jobId}"),
         ], 202);
     }
 

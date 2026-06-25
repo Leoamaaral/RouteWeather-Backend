@@ -1,14 +1,15 @@
 {
   "version": 2,
-  "functions": {
-    "server/index.php": {
-      "runtime": "vercel-php@0.7.4"
+  "builds": [
+    {
+      "src": "/api/index.php",
+      "use": "vercel-php@0.7.4"
     }
-  },
+  ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/server/index.php"
+      "dest": "/api/index.php"
     }
   ],
   "env": {
@@ -20,7 +21,6 @@
     "APP_CONFIG_CACHE": "/tmp/config.php",
     "APP_EVENTS_CACHE": "/tmp/events.php",
     "APP_PACKAGES_CACHE": "/tmp/packages.php",
-    "APP_ROUTES_CACHE": "/tmp/routes.php",
     "APP_SERVICES_CACHE": "/tmp/services.php",
     "VIEW_COMPILED_PATH": "/tmp/views"
   }

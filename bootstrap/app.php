@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__.'/../routes/web.php',
         api: __DIR__.'/../routes/api.php',
+        apiPrefix: '',
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -21,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
+            fn (Request $request) => $request->is('api/*', 'v1/*') || $request->expectsJson(),
         );
 
         $exceptions->render(function (ExternalServiceException $e) {
@@ -35,7 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (ConnectionException $e, Request $request) {
-            if (! ($request->is('api/*') || $request->expectsJson())) {
+            if (! ($request->is('api/*', 'v1/*') || $request->expectsJson())) {
                 return null;
             }
 
@@ -48,7 +49,7 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (ValidationException $e, Request $request) {
-            if (! ($request->is('api/*') || $request->expectsJson())) {
+            if (! ($request->is('api/*', 'v1/*') || $request->expectsJson())) {
                 return null;
             }
 
@@ -62,7 +63,7 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         $exceptions->render(function (Throwable $e, Request $request) {
-            if (! ($request->is('api/*') || $request->expectsJson()) || $e instanceof HttpExceptionInterface) {
+            if (! ($request->is('api/*', 'v1/*') || $request->expectsJson()) || $e instanceof HttpExceptionInterface) {
                 return null;
             }
 

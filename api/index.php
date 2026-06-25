@@ -1,9 +1,9 @@
 <?php
 
 /**
- * Vercel serverless entrypoint.
- * Must live outside /api — Vercel reserves that path for serverless functions,
- * which conflicts with Laravel routes prefixed with /api.
+ * Vercel serverless entrypoint (must live in api/ — required by the platform).
+ * Laravel routes are exposed at /v1/* (not /api/v1/*) to avoid conflicting with
+ * Vercel's reserved /api path for serverless functions.
  */
 use Illuminate\Contracts\Http\Kernel;
 use Illuminate\Http\Request;

@@ -9,7 +9,7 @@
     { "url": "http://localhost:8000", "description": "Local" }
   ],
   "paths": {
-    "/api/v1/health": {
+    "/v1/health": {
       "get": {
         "summary": "Service health and dependency status",
         "responses": {
@@ -37,13 +37,13 @@
         }
       }
     },
-    "/api/v1/docs": {
+    "/v1/docs": {
       "get": {
         "summary": "This OpenAPI specification as JSON",
         "responses": { "200": { "description": "OpenAPI document" } }
       }
     },
-    "/api/v1/route-weather/plan": {
+    "/v1/route-weather/plan": {
       "post": {
         "summary": "Route plan + weather timeline + risk",
         "requestBody": {
@@ -70,7 +70,7 @@
         }
       }
     },
-    "/api/v1/route-weather/plan/compare": {
+    "/v1/route-weather/plan/compare": {
       "post": {
         "summary": "Compare multiple departure windows and recommend the lowest-risk one",
         "requestBody": {
@@ -148,7 +148,7 @@
         }
       }
     },
-    "/api/v1/route-weather/plan/async": {
+    "/v1/route-weather/plan/async": {
       "post": {
         "summary": "Enqueue a plan and receive a job id for polling",
         "requestBody": {
@@ -179,7 +179,7 @@
         }
       }
     },
-    "/api/v1/route-weather/plan/status/{jobId}": {
+    "/v1/route-weather/plan/status/{jobId}": {
       "get": {
         "summary": "Poll the result of an enqueued plan",
         "parameters": [

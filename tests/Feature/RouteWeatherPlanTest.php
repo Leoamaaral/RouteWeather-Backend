@@ -24,7 +24,7 @@ class RouteWeatherPlanTest extends TestCase
     {
         $this->fakeUpstreams();
 
-        $response = $this->postJson('/api/v1/route-weather/plan', [
+        $response = $this->postJson('/v1/route-weather/plan', [
             'origin' => 'São Paulo, SP',
             'destination' => 'Rio de Janeiro, RJ',
             'sample_interval_km' => 200,
@@ -45,7 +45,7 @@ class RouteWeatherPlanTest extends TestCase
 
     public function test_plan_validates_required_fields(): void
     {
-        $response = $this->postJson('/api/v1/route-weather/plan', [
+        $response = $this->postJson('/v1/route-weather/plan', [
             'destination' => 'Rio de Janeiro, RJ',
         ]);
 
@@ -61,7 +61,7 @@ class RouteWeatherPlanTest extends TestCase
             'api.tomorrow.io/*' => Http::response([], 200),
         ]);
 
-        $response = $this->postJson('/api/v1/route-weather/plan', [
+        $response = $this->postJson('/v1/route-weather/plan', [
             'origin' => 'Lugar inexistente',
             'destination' => 'Outro lugar',
         ]);
@@ -74,7 +74,7 @@ class RouteWeatherPlanTest extends TestCase
     {
         $this->fakeUpstreams();
 
-        $response = $this->postJson('/api/v1/route-weather/plan/compare', [
+        $response = $this->postJson('/v1/route-weather/plan/compare', [
             'origin' => 'São Paulo, SP',
             'destination' => 'Rio de Janeiro, RJ',
             'departure_windows' => ['2026-05-04T06:00:00-03:00', '2026-05-04T09:00:00-03:00'],
@@ -93,7 +93,7 @@ class RouteWeatherPlanTest extends TestCase
     {
         $this->fakeUpstreams();
 
-        $dispatch = $this->postJson('/api/v1/route-weather/plan/async', [
+        $dispatch = $this->postJson('/v1/route-weather/plan/async', [
             'origin' => 'São Paulo, SP',
             'destination' => 'Rio de Janeiro, RJ',
             'use_traffic' => false,
@@ -103,7 +103,7 @@ class RouteWeatherPlanTest extends TestCase
         $jobId = $dispatch->json('job_id');
         $this->assertNotEmpty($jobId);
 
-        $status = $this->getJson("/api/v1/route-weather/plan/status/{$jobId}");
+        $status = $this->getJson("/v1/route-weather/plan/status/{$jobId}");
         $status->assertOk();
         $status->assertJsonPath('status', 'completed');
         $status->assertJsonStructure(['job_id', 'status', 'result' => ['timeline', 'risk']]);
@@ -111,7 +111,7 @@ class RouteWeatherPlanTest extends TestCase
 
     public function test_status_returns_404_for_unknown_job(): void
     {
-        $response = $this->getJson('/api/v1/route-weather/plan/status/does-not-exist');
+        $response = $this->getJson('/v1/route-weather/plan/status/does-not-exist');
 
         $response->assertStatus(404);
         $response->assertJsonPath('error.code', 'JOB_NOT_FOUND');
@@ -119,7 +119,7 @@ class RouteWeatherPlanTest extends TestCase
 
     public function test_health_reports_dependency_configuration(): void
     {
-        $response = $this->getJson('/api/v1/health');
+        $response = $this->getJson('/v1/health');
 
         $response->assertOk();
         $response->assertJsonPath('status', 'ok');
@@ -129,7 +129,7 @@ class RouteWeatherPlanTest extends TestCase
 
     public function test_docs_returns_openapi_spec(): void
     {
-        $response = $this->getJson('/api/v1/docs');
+        $response = $this->getJson('/v1/docs');
 
         $response->assertOk();
         $response->assertJsonPath('openapi', '3.0.3');
